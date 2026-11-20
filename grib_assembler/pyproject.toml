@@ -17,9 +17,10 @@ dependencies = [
 [project.scripts]
 grib-asm = "grib_asm.cli:main"
 grib-cube = "grib_asm.cube.cli:main"
+grib-cube-training = "grib_asm.training.cli:main"
 
 [tool.setuptools]
-packages = ["grib_asm"]
+packages = ["grib_asm", "grib_asm.cube", "grib_asm.training"]
 
 [tool.pytest.ini_options]
 markers = [

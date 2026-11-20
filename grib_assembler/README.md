@@ -59,11 +59,22 @@ grib_asm/
     importer.py   validate -> preflight -> batch stream -> commit
     query.py      slice reads with mask, coordinates and provenance
     cli.py        cube-import | cube-recover | cube-inspect | cube-query
+  training/       point-in-time feature/label training-table export
+    model.py        whole-second clock, recipe/sample/stream record parsing
+    timeline.py     visibility + sequence ordering, resend/conflict rules
+    workspace.py    disk-backed SQLite staging (inputs never held in memory)
+    cubeaccess.py   chunk-once, provenance-annotated point reads
+    export.py       staged resolve -> fetch -> emit pipeline and statuses
+    errors.py       evidence-bearing error reasons
+    cli.py          cube-training-export
 tools/
   fixturegen.py        ecCodes fixture encoder (test-only place that writes values)
   demo_common.py       shared demo/test spec builders
   make_demo_data.py    regenerates the small committed demo dataset
   cube_stream_check.py independent streaming/peak-memory check
+  training_fixtures.py real-cube + JSONL builders for the training export
+  training_demo.py     hand-timed point-in-time export demo
+  training_scale_check.py large shuffled manifest / chunk-read / memory check
   run_demo.sh          end-to-end CLI drill
 tests/                 unit + end-to-end + memory-flatness + cube tests
 ```
@@ -155,4 +166,45 @@ python -m grib_asm.cube.cli cube-inspect --store run/cube
 python -m grib_asm.cube.cli cube-query --store run/cube \
     --request run/packages/drill__2026-01-01T000000Z/request.json \
     --include-values
+```
+
+## Point-in-time training-table export
+
+`grib_asm.training` rebuilds, per sample, the features genuinely visible at the
+sample's historical `decision_at` and attaches a label resolved independently
+at a common `label_cutoff`, so later-published forecasts and back-filled
+station migrations never leak into history.  It is data preparation only: no
+modelling, forecasting, interpolation or unit conversion.
+
+* Two clocks stay separate: the feature clock (`decision_at`) gates
+  publish/station records; the label clock (`label_cutoff`) gates measurement
+  corrections, which never influence feature selection.
+* Each feature column names its full variable/level/member identity, its
+  interval-statistics slot and its target-relative window; both window
+  endpoints must derive the same origin.  Same-end, different-start slots are
+  located independently, never substituted, and no other cycle is searched to
+  fill a gap.
+* Statuses distinguish not-registered, unmapped, not-published, withdrawn,
+  missing field and an explicitly missing grid point, applying station →
+  publish → field/point precedence.  Labels distinguish not-received,
+  retracted and unit-mismatch.
+* Contradictory evidence (wrong/unknown grid, out-of-bounds point, publish
+  digest the cube cannot confirm, same-instant conflicting records) is a hard
+  evidence error naming the key, with no success output left behind.
+* Inputs stream through a cleanable SQLite workspace; each accessed `values`
+  block is decoded at most once per run, and peak memory is bounded by one
+  grid chunk, the point batch, the SQLite cache and recipe/registry metadata.
+
+See [docs/TRAINING.md](docs/TRAINING.md) for the full contract and memory
+model.
+
+```bash
+python -I -m grib_asm.training.cli cube-training-export \
+    --store run/cube --recipe recipe.json \
+    --samples samples.jsonl --publish-stream publish.jsonl \
+    --station-stream station.jsonl --observation-stream observation.jsonl \
+    --output-jsonl run/training.jsonl --output-summary run/summary.json
+
+python -I tools/training_demo.py --out run/training-demo       # hand-timed demo
+python -I tools/training_scale_check.py --sizes 200 800 3200   # memory/reads
 ```

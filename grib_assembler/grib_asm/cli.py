@@ -199,6 +199,48 @@ def build_parser() -> argparse.ArgumentParser:
     pcq.add_argument("--validity-end-to")
     pcq.add_argument("--include-values", action="store_true")
     pcq.set_defaults(func=cube_cmd_query)
+
+    # Point-in-time training-table export.  The handler lives in the training
+    # sub-package; the top-level CLI only mirrors its arguments and dispatches.
+    from .training.export import ExportConfig
+
+    pt = sub.add_parser(
+        "cube-training-export",
+        help="point-in-time feature/label training-table export")
+    pt.add_argument("--store", required=True)
+    pt.add_argument("--recipe", required=True)
+    pt.add_argument("--samples", required=True)
+    pt.add_argument("--publish-stream", required=True)
+    pt.add_argument("--station-stream", required=True)
+    pt.add_argument("--observation-stream", required=True)
+    pt.add_argument("--output-jsonl", required=True)
+    pt.add_argument("--output-summary", required=True)
+    pt.add_argument("--work-dir")
+    pt.add_argument("--keep-workspace", action="store_true")
+    pt.add_argument("--sqlite-cache-kib", type=int, default=64 * 1024)
+    pt.add_argument("--commit-every", type=int, default=1000)
+    pt.add_argument("--point-batch", type=int, default=4096)
+
+    def _training_handler(nargs) -> int:
+        from .training.export import export_training_table
+        config = ExportConfig(
+            work_dir=nargs.work_dir,
+            keep_workspace=nargs.keep_workspace,
+            sqlite_cache_kib=nargs.sqlite_cache_kib,
+            commit_every=nargs.commit_every,
+            point_batch=nargs.point_batch)
+        report = export_training_table(
+            store_path=nargs.store, recipe_path=nargs.recipe,
+            samples_path=nargs.samples,
+            publish_path=nargs.publish_stream,
+            station_path=nargs.station_stream,
+            observation_path=nargs.observation_stream,
+            out_jsonl=nargs.output_jsonl,
+            out_summary=nargs.output_summary, config=config)
+        _print(report.to_dict())
+        return 0
+
+    pt.set_defaults(func=_training_handler)
     return p
 
 
@@ -214,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:
-        # Cube pipeline errors carry a stable reason code.
+        # Cube pipeline and training-export errors carry a stable reason code.
         reason = getattr(exc, "reason", None)
         if reason is not None:
             _print({"error": reason, "evidence": getattr(exc, "evidence", {})})

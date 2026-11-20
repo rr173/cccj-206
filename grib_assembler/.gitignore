@@ -15,6 +15,13 @@ run/cube/
 *.zarr/
 .cube/txn/
 
+# Point-in-time training export outputs are fully regenerable.
+run/training-demo/
+cube-training-*/
+training.sqlite
+training.sqlite-wal
+training.sqlite-shm
+
 # Keep the small committed demo dataset, ignore any locally regenerated
 # large archives outside it.
 .pytest_cache/
