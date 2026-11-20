@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Generated runtime state (large/transient; regenerate with tools/run_demo.sh)
+demo_run/
+*.db
+*.blocked.json
+
+# Keep the small committed demo dataset, ignore any locally regenerated
+# large archives outside it.
+.pytest_cache/

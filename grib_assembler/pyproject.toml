@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grib-assembler"
+version = "1.0.0"
+description = "Offline GRIB2 collection assembler (header read + byte-copy only)"
+requires-python = ">=3.11"
+dependencies = [
+    "eccodes",
+    "numpy",
+]
+
+[project.scripts]
+grib-asm = "grib_asm.cli:main"
+
+[tool.setuptools]
+packages = ["grib_asm"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: large/temporary-archive tests that are slow or resource heavy",
+]
