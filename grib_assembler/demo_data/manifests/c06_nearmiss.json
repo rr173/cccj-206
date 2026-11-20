@@ -6,25 +6,25 @@
       "file_id": "all",
       "relative_path": "all.grib2",
       "size_bytes": 690,
-      "sha256": "761cf867951ea5b0e926feeb407318c3e984751d48599bbf5f643481f9a05a05"
+      "sha256": "0d4ca5b8cdd4772b450a30b6cb1ae4709128b3f841fc0abb313090a7675fabe2"
     },
     {
       "file_id": "decoy_0_6h",
       "relative_path": "decoy_0_6h.grib2",
       "size_bytes": 230,
-      "sha256": "ee63fa5c6e54416f2eddd90a53c4cf61a214c4ad21b182b10ec880db46c129a9"
+      "sha256": "c01c3cffc9ec017e3fa45ab37fa754134e837eaaf4307c7f30ac58596caa362c"
     },
     {
       "file_id": "decoy_other_grid",
       "relative_path": "decoy_other_grid.grib2",
       "size_bytes": 230,
-      "sha256": "3a3d05a9e19aa3f2844420cb7d8d65fbf28ac80bf756ad51d026ca9636dac5ff"
+      "sha256": "eceb2b00738fd53644b3bf15b2420b7ac8a3e79905809dd70c91fce9f32f4df6"
     },
     {
       "file_id": "decoy_other_param",
       "relative_path": "decoy_other_param.grib2",
       "size_bytes": 230,
-      "sha256": "3b73528a96780eed5d335b1c4ded4a62916d0cead0bafbebc6c9665fe5afda87"
+      "sha256": "aad88e71639570590798216e9371b410a9d3e200a60a3946e5de3a739782e23e"
     }
   ]
 }

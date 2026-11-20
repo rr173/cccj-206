@@ -3,7 +3,7 @@
   "origin_from": "2026-01-01T00:00:00Z",
   "origin_to": "2026-01-01T06:00:00Z",
   "not_after": "2026-01-01T12:00:00Z",
-  "expected_grid_digest": "7d05394e7bb1b99a89e6ddbce08ae961cebc47c61d9cf67b21b0706d376146ae",
+  "expected_grid_digest": "5d816b877bd6601dcc3681f529f2496c34047171643de3da9a63f0d8cadbe324",
   "variables": [
     {
       "discipline": 0,

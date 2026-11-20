@@ -10,10 +10,13 @@ requires-python = ">=3.11"
 dependencies = [
     "eccodes",
     "numpy",
+    "zarr<3",
+    "numcodecs",
 ]
 
 [project.scripts]
 grib-asm = "grib_asm.cli:main"
+grib-cube = "grib_asm.cube.cli:main"
 
 [tool.setuptools]
 packages = ["grib_asm"]

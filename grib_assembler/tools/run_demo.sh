@@ -68,5 +68,17 @@ echo "== 6. independently verify the 00Z package =="
 PKG="$(find "$OUT" -maxdepth 1 -type d -name 'drill__*' | head -n 1)"
 "$PY" -m grib_asm.cli --catalog-db "$DB" verify-package --package-dir "$PKG"
 
+echo "== 7. import the verified package into a Zarr analysis cube =="
+CUBE="$RUN/cube"
+"$PY" -m grib_asm.cube.cli cube-import \
+  --store "$CUBE" --package-dir "$PKG" --batch-size 4
+
+echo "== 8. inspect committed cube coordinates and sources =="
+"$PY" -m grib_asm.cube.cli cube-inspect --store "$CUBE"
+
+echo "== 9. query one variable slice with mask and provenance =="
+"$PY" -m grib_asm.cube.cli cube-query --store "$CUBE" \
+  --request "$DATA/request.json" --variable-index 0
+
 echo
-echo "Demo run complete. Packages under: $OUT"
+echo "Demo run complete. Packages under: $OUT, cube under: $CUBE"

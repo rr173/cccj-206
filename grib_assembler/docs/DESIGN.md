@@ -67,9 +67,7 @@ collection adds or removes files without rewriting prior catalog rows or
 already-published packages. Old hand-off directories are never modified; new
 assemblies are published under new, content-addressed directory names.
 
-## 5. Main drill outcomes (independently authored expectations)
-
-The four-cell matrix is one variable/level, two members (control, perturbed),
+## 5. Main drill outcomes (independently authored expectations)The four-cell matrix is one variable/level, two members (control, perturbed),
 two accumulation slots (0-3h, 3-6h):
 
 1. 00Z complete, 06Z missing perturbed 3-6h -> select 00Z, four cells.
@@ -82,3 +80,27 @@ two accumulation slots (0-3h, 3-6h):
 
 These are asserted in `tests/test_e2e_drill.py` with hand-written matrices and
 reproduced against real data by `tools/run_demo.sh`.
+
+## 6. Analysis cube requirement traceability
+
+The cube pipeline (`grib_asm/cube/`) is the only component allowed to decode
+grid point values; everything else in the project remains header/copy-only.
+
+| Requirement | Where enforced |
+| --- | --- |
+| Completion marker, whole-file digest, per-record offset/length/digest, order and request identity checked before any write | `cube/loader.load_and_validate` (delegates structural work to `verify.verify_package`) |
+| Any validation failure leaves the published dataset untouched | `cube/importer.import_package` preflight runs before `begin_transaction`; rollback removes staging |
+| Regular lat/lon (GDT 3.0) and scan mode 0 only; single-message full decode | `cube/decode.decode_message` |
+| Stable unsupported reasons, no silent skip, cycle never reported complete | `cube/decode`, `cube/loader` raise `UnsupportedCubeMessage`; no partial commit exists |
+| Full numeric variable identity; short names never merge variables | `cube/coords.variable_key`, `cube/store.Registry.ensure_variable` |
+| Exact rational levels; missing second surface stays missing | `cube/coords.level_key` over `identity.Level` |
+| Relative start/end seconds, statistic, absolute validity boundaries; instant vs interval distinct | `cube/coords.slot_key`/`validity_bounds`, `Registry.ensure_slot` |
+| Raw units retained; CF mapping only on explicit full-identity rules | `cube/units.resolve_units` |
+| Missing cells as explicit mask, never neighbour-filled | `vars/.../present` uint8 array; unwritten cells keep fill 0 and NaN |
+| Only grid/identity/unit/level-compatible packages accepted | `cube/importer._preflight` compatibility checks |
+| Same origin+digest idempotent; same origin+different digest conflict retained, old data readable | `import_package` idempotency branch, `_record_conflict`, `.cube/conflicts/` |
+| Per-cycle commit; no half-registered cycle visible | `cube/store.commit` marker-last `os.replace`; `CubeReader` hides unmarked origins |
+| Recovery cleans up or resumes; committed cycles never rewritten | `cube/recovery.recover` (cleanup/resume) |
+| Peak memory bounded by batch size and single message, not cycle count | `CubeConfig.batch_size`, full-grid chunks, `tools/cube_stream_check.py` |
+| Query by variable/member/level/validity window with stable order, mask and provenance | `cube/query.CubeReader.select` |
+| No large generated data committed; reproducible small GRIB2 inputs | `tests/cube_helpers.py`, runtime generation only |

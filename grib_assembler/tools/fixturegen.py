@@ -91,7 +91,7 @@ class FixtureSpec:
     end_minute: int = 0
     end_second: int = 0
     # Packing / data.
-    bits_per_value: int = 16
+    bits_per_value: int = 24
     data_seed: int = 1
     values: list | None = None
 
@@ -126,6 +126,16 @@ def encode_message(spec: FixtureSpec) -> bytes:
         codes_set(h, "longitudeOfFirstGridPointInDegrees", spec.first_lon)
         codes_set(h, "iDirectionIncrementInDegrees", spec.delta_lon)
         codes_set(h, "jDirectionIncrementInDegrees", spec.delta_lat)
+        # Set the last grid point explicitly.  Without it ecCodes derives the
+        # basic-angle increments from first->last, which contradicts the
+        # declared regular spacing and makes independently computed
+        # coordinates disagree with the decoded ones.
+        codes_set(
+            h, "longitudeOfLastGridPointInDegrees",
+            spec.first_lon + (spec.ni - 1) * spec.delta_lon)
+        codes_set(
+            h, "latitudeOfLastGridPointInDegrees",
+            spec.first_lat - (spec.nj - 1) * spec.delta_lat)
         codes_set(h, "scanningMode", 0)
 
         # Product definition template.

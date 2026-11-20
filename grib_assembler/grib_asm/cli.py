@@ -30,6 +30,8 @@ def _print(obj) -> None:
 
 
 def _open_catalog(args) -> tuple[Catalog, dict]:
+    if not args.catalog_db:
+        raise SystemExit("--catalog-db is required for this subcommand")
     cat = Catalog(args.catalog_db)
     roots = {}
     if args.input_roots:
@@ -118,7 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="grib-asm",
         description="Offline GRIB2 collection assembler (headers/copy only).")
-    p.add_argument("--catalog-db", required=True,
+    # The catalog is only needed by the ingest/readiness/assemble family;
+    # cube subcommands operate on completed hand-off packages alone.
+    p.add_argument("--catalog-db",
                    help="SQLite catalog path (disk-backed state).")
     p.add_argument("--input-roots", action="append", default=[],
                    help="collection_id=/abs/input/root, repeatable.")
@@ -152,6 +156,49 @@ def build_parser() -> argparse.ArgumentParser:
     pv = sub.add_parser("verify-package")
     pv.add_argument("--package-dir", required=True)
     pv.set_defaults(func=cmd_verify)
+
+    # Package -> analysis cube family.  These delegate to grib_asm.cube and
+    # do not use the ingest catalog.
+    from .cube.cli import (
+        cmd_import as cube_cmd_import,
+        cmd_inspect as cube_cmd_inspect,
+        cmd_query as cube_cmd_query,
+        cmd_recover as cube_cmd_recover,
+    )
+
+    pc = sub.add_parser("cube-import")
+    pc.add_argument("--store", required=True)
+    pc.add_argument("--package-dir", required=True)
+    pc.add_argument("--batch-size", type=int, default=16)
+    pc.add_argument("--coord-chunk", nargs=4, type=int,
+                    default=[1, 1, 1, 1], metavar=("O", "L", "M", "S"))
+    pc.add_argument("--compressor-level", type=int, default=3)
+    pc.add_argument("--recovery-mode", choices=("cleanup", "resume"),
+                    default="cleanup")
+    pc.set_defaults(func=cube_cmd_import)
+
+    pcr = sub.add_parser("cube-recover")
+    pcr.add_argument("--store", required=True)
+    pcr.add_argument("--recovery-mode", choices=("cleanup", "resume"),
+                     default="cleanup")
+    pcr.set_defaults(func=cube_cmd_recover)
+
+    pci = sub.add_parser("cube-inspect")
+    pci.add_argument("--store", required=True)
+    pci.set_defaults(func=cube_cmd_inspect)
+
+    pcq = sub.add_parser("cube-query")
+    pcq.add_argument("--store", required=True)
+    pcq.add_argument("--request", required=True)
+    pcq.add_argument("--variable-index", type=int, default=0)
+    pcq.add_argument("--level-index", type=int, action="append")
+    pcq.add_argument("--member-index", type=int, action="append")
+    pcq.add_argument("--slot-index", type=int, action="append")
+    pcq.add_argument("--origin", action="append")
+    pcq.add_argument("--validity-start-from")
+    pcq.add_argument("--validity-end-to")
+    pcq.add_argument("--include-values", action="store_true")
+    pcq.set_defaults(func=cube_cmd_query)
     return p
 
 
@@ -166,6 +213,13 @@ def main(argv: list[str] | None = None) -> int:
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:
+        # Cube pipeline errors carry a stable reason code.
+        reason = getattr(exc, "reason", None)
+        if reason is not None:
+            _print({"error": reason, "evidence": getattr(exc, "evidence", {})})
+            return 6
+        raise
 
 
 if __name__ == "__main__":

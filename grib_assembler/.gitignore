@@ -10,6 +10,11 @@ demo_run/
 *.db
 *.blocked.json
 
+# Analysis cube stores are always generated; the repository keeps no data.
+run/cube/
+*.zarr/
+.cube/txn/
+
 # Keep the small committed demo dataset, ignore any locally regenerated
 # large archives outside it.
 .pytest_cache/
