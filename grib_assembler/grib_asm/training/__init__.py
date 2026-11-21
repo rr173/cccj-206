@@ -27,11 +27,42 @@ The module layout mirrors the staged pipeline:
 * :mod:`cubeaccess`  bounded, chunk-once point reads against the Zarr cube;
 * :mod:`export`      the orchestrating pipeline and the JSONL/JSON writer;
 * :mod:`cli`         the ``cube-training-export`` command.
+
+A second, strictly offline family consumes the exported rows without ever
+touching a cube:
+
+* :mod:`distribute_plan`      export manifest + delivery plan validation;
+* :mod:`distribute_rows`      strict parsing of already-exported rows;
+* :mod:`distribute_workspace` disk-backed union forest for the two transitive
+                              relation kinds (shared message digest,
+                              overlapping observation intervals);
+* :mod:`distribute`           shard/isolation delivery and index emission;
+* :mod:`distribute_explain`   re-checkable cross-window evidence chains;
+* the ``cube-training-distribute`` / ``cube-training-explain`` CLI commands.
 """
 
 from .errors import TrainingExportError
-from .export import ExportConfig, TrainingExporter, export_training_table
 from .model import FeatureColumn, Recipe, Sample
+
+# The export pipeline pulls in the cube reader (numpy/zarr/...); keep those
+# imports lazy so the strictly offline distribution family
+# (``cube-training-distribute`` / ``-explain``) stays importable on a host that
+# only has the standard library.
+_LAZY_EXPORTS = {
+    "ExportConfig": "grib_asm.training.export",
+    "TrainingExporter": "grib_asm.training.export",
+    "export_training_table": "grib_asm.training.export",
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_EXPORTS:
+        import importlib
+
+        module = importlib.import_module(_LAZY_EXPORTS[name])
+        return getattr(module, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "TrainingExportError",

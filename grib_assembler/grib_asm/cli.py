@@ -241,6 +241,80 @@ def build_parser() -> argparse.ArgumentParser:
         return 0
 
     pt.set_defaults(func=_training_handler)
+
+    # Offline distribution of already-exported rows and isolation explanation.
+    # Both commands delegate to the training sub-package and never open a cube.
+    from .training.distribute import DistributionConfig
+    from .training.distribute_workspace import (
+        DistributionWorkspace, WorkspaceConfig,
+    )
+    from .training.distribute_explain import explain_row
+    from .training.distribute_rows import joint_identity
+
+    pdist = sub.add_parser(
+        "cube-training-distribute",
+        help="split exported rows into train/validation/holdout plus an "
+             "isolation file using connected-source groups")
+    pdist.add_argument("--manifest", required=True)
+    pdist.add_argument("--plan", required=True)
+    pdist.add_argument("--out-dir", required=True)
+    pdist.add_argument("--work-dir")
+    pdist.add_argument("--keep-workspace", action="store_true")
+    pdist.add_argument("--sqlite-cache-kib", type=int, default=16 * 1024)
+    pdist.add_argument("--commit-every", type=int, default=2000)
+    pdist.add_argument("--page-limit", type=int, default=2000)
+
+    def _distribute_handler(nargs) -> int:
+        config = DistributionConfig(
+            work_dir=nargs.work_dir,
+            keep_workspace=nargs.keep_workspace,
+            sqlite_cache_kib=nargs.sqlite_cache_kib,
+            commit_every=nargs.commit_every,
+            page_limit=nargs.page_limit)
+        from .training.distribute import run_distribution
+        report = run_distribution(
+            manifest_path=nargs.manifest, plan_path=nargs.plan,
+            out_dir=nargs.out_dir, config=config)
+        _print(report.to_dict())
+        return 0
+
+    pdist.set_defaults(func=_distribute_handler)
+
+    pexpl = sub.add_parser(
+        "cube-training-explain",
+        help="explain an isolated row from the delivered distribution index")
+    pexpl.add_argument("--index", required=True)
+    pexpl.add_argument("--joint-id")
+    pexpl.add_argument("--export-id")
+    pexpl.add_argument("--sample-id")
+    pexpl.add_argument("--sqlite-cache-kib", type=int, default=16 * 1024)
+    pexpl.add_argument("--max-chain-nodes", type=int, default=5000,
+                       help="resident-node budget per evidence chain before "
+                            "the logarithmic spanning-forest path is used")
+
+    def _explain_handler(nargs) -> int:
+        if nargs.joint_id is not None:
+            asked = nargs.joint_id
+        else:
+            if nargs.export_id is None or nargs.sample_id is None:
+                raise SystemExit(
+                    "provide either --joint-id or both --export-id and "
+                    "--sample-id")
+            asked = joint_identity(nargs.export_id, nargs.sample_id)
+        if not Path(nargs.index).is_file():
+            raise FileNotFoundError(
+                f"distribution index not found: {nargs.index}")
+        ws = DistributionWorkspace.open_readonly(
+            nargs.index,
+            config=WorkspaceConfig(sqlite_cache_kib=nargs.sqlite_cache_kib))
+        try:
+            _print(explain_row(ws, asked,
+                               max_chain_nodes=nargs.max_chain_nodes))
+        finally:
+            ws.conn.close()
+        return 0
+
+    pexpl.set_defaults(func=_explain_handler)
     return p
 
 
@@ -256,11 +330,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:
-        # Cube pipeline and training-export errors carry a stable reason code.
+        # Cube pipeline, training-export and distribution errors carry a
+        # stable reason code.
         reason = getattr(exc, "reason", None)
         if reason is not None:
             _print({"error": reason, "evidence": getattr(exc, "evidence", {})})
-            return 6
+            return 7 if reason.startswith(("plan_", "manifest_", "row_",
+                                           "gap_", "duplicate_export",
+                                           "successful_feature",
+                                           "explain_")) else 6
         raise
 
 

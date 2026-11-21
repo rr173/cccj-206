@@ -65,8 +65,13 @@ grib_asm/
     workspace.py    disk-backed SQLite staging (inputs never held in memory)
     cubeaccess.py   chunk-once, provenance-annotated point reads
     export.py       staged resolve -> fetch -> emit pipeline and statuses
+    distribute_plan.py   export manifest + delivery plan validation
+    distribute_rows.py   strict parsing of already-exported rows
+    distribute_workspace.py  disk-backed union forest (linear edge count)
+    distribute.py    train/validation/holdout + isolation delivery
+    distribute_explain.py  re-checkable cross-window evidence chains
     errors.py       evidence-bearing error reasons
-    cli.py          cube-training-export
+    cli.py          cube-training-export | -distribute | -explain
 tools/
   fixturegen.py        ecCodes fixture encoder (test-only place that writes values)
   demo_common.py       shared demo/test spec builders
@@ -75,6 +80,8 @@ tools/
   training_fixtures.py real-cube + JSONL builders for the training export
   training_demo.py     hand-timed point-in-time export demo
   training_scale_check.py large shuffled manifest / chunk-read / memory check
+  distribution_demo.py hand-drawn connected-source distribution demo
+  distribution_scale_check.py hot-digest / nested-interval scale check
   run_demo.sh          end-to-end CLI drill
 tests/                 unit + end-to-end + memory-flatness + cube tests
 ```
@@ -207,4 +214,45 @@ python -I -m grib_asm.training.cli cube-training-export \
 
 python -I tools/training_demo.py --out run/training-demo       # hand-timed demo
 python -I tools/training_scale_check.py --sizes 200 800 3200   # memory/reads
+```
+
+## Offline connected-source distribution
+
+`cube-training-distribute` consumes already-exported rows and delivers three
+real shards plus one isolation file.  Rows are inseparable when an `ok`
+feature of each references the same original GRIB2 `message_digest` (same
+digest across packages/columns/coordinates; equal values or shared packages
+alone never relate), or when same-`(station_id, metric)` target intervals
+overlap after each is provisionally extended by `gap_seconds`.  Both relation
+kinds are unioned transitively in a disk-backed union forest, so a row with no
+usable label can still bridge candidates of two windows.
+
+* A component whose candidates name one window is delivered to that shard; a
+  component spanning two or three windows isolates all its candidates - no
+  majority/first/priority rule.  Cross-window, outside-window and unlabeled
+  rows are isolated with explicit, multi-valued reasons.
+* Edges stay linear: message references become hub-and-spoke stars
+  (`k - 1` edges per digest) and an interval sweep emits at most one
+  observation edge per row, so a million-row hot field or deeply nested
+  station intervals never produce a quadratic table.  No whole component or
+  member list is held in memory.
+* A self-contained SQLite index preserves rows, references and evidence
+  edges; `cube-training-explain` reconstructs, from that index alone, the
+  re-checkable message/observation chain from an isolated row to candidates in
+  each other window, with a bounded-memory forest fallback.
+
+See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the full contract,
+transitivity argument, scale measurements and error catalogue.
+
+```bash
+python -I -m grib_asm.training.cli cube-training-distribute \
+    --manifest export-manifest.json --plan delivery-plan.json \
+    --out-dir run/delivery
+
+python -I -m grib_asm.training.cli cube-training-explain \
+    --index run/delivery/distribution-index.sqlite \
+    --export-id export-2026-01 --sample-id A
+
+python -I tools/distribution_demo.py --out run/distribution-demo
+python -I tools/distribution_scale_check.py --sizes 500 2000 8000
 ```

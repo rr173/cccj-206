@@ -22,6 +22,15 @@ training.sqlite
 training.sqlite-wal
 training.sqlite-shm
 
+# Offline connected-source distribution outputs are fully regenerable.
+run/distribution-demo/
+distribution.sqlite
+distribution.sqlite-wal
+distribution.sqlite-shm
+distribution-index.sqlite
+distribution-index.sqlite-wal
+distribution-index.sqlite-shm
+
 # Keep the small committed demo dataset, ignore any locally regenerated
 # large archives outside it.
 .pytest_cache/

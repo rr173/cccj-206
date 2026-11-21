@@ -21,6 +21,7 @@ from pathlib import Path
 from ..identity import Level, MemberId, VariableId
 from ..request import load_request
 from ..timeutil import TimeSlot
+from ..training.distribute_errors import DistributionError
 from ..training.errors import TrainingExportError
 from .errors import CubeError
 from .importer import ImportReport, import_package
@@ -198,6 +199,80 @@ def build_parser() -> argparse.ArgumentParser:
         return 0
 
     pt.set_defaults(func=cmd_training_export)
+
+    # Offline connected-source distribution and isolation explanation.  These
+    # consume exported JSONL/index artifacts only; they never open a cube.
+    from ..training.distribute import DistributionConfig
+    from ..training.distribute_workspace import (
+        DistributionWorkspace, WorkspaceConfig,
+    )
+    from ..training.distribute_explain import explain_row
+    from ..training.distribute_rows import joint_identity
+
+    pdist = sub.add_parser(
+        "cube-training-distribute",
+        help="split exported rows into train/validation/holdout plus an "
+             "isolation file using connected-source groups")
+    pdist.add_argument("--manifest", required=True)
+    pdist.add_argument("--plan", required=True)
+    pdist.add_argument("--out-dir", required=True)
+    pdist.add_argument("--work-dir")
+    pdist.add_argument("--keep-workspace", action="store_true")
+    pdist.add_argument("--sqlite-cache-kib", type=int, default=16 * 1024)
+    pdist.add_argument("--commit-every", type=int, default=2000)
+    pdist.add_argument("--page-limit", type=int, default=2000)
+
+    def cmd_training_distribute(nargs) -> int:
+        from ..training.distribute import run_distribution
+        config = DistributionConfig(
+            work_dir=nargs.work_dir,
+            keep_workspace=nargs.keep_workspace,
+            sqlite_cache_kib=nargs.sqlite_cache_kib,
+            commit_every=nargs.commit_every,
+            page_limit=nargs.page_limit)
+        report = run_distribution(
+            manifest_path=nargs.manifest, plan_path=nargs.plan,
+            out_dir=nargs.out_dir, config=config)
+        _print(report.to_dict())
+        return 0
+
+    pdist.set_defaults(func=cmd_training_distribute)
+
+    pexpl = sub.add_parser(
+        "cube-training-explain",
+        help="explain an isolated row from the delivered distribution index")
+    pexpl.add_argument("--index", required=True)
+    pexpl.add_argument("--joint-id")
+    pexpl.add_argument("--export-id")
+    pexpl.add_argument("--sample-id")
+    pexpl.add_argument("--sqlite-cache-kib", type=int, default=16 * 1024)
+    pexpl.add_argument("--max-chain-nodes", type=int, default=5000,
+                       help="resident-node budget per evidence chain before "
+                            "the logarithmic spanning-forest path is used")
+
+    def cmd_training_explain(nargs) -> int:
+        if nargs.joint_id is not None:
+            asked = nargs.joint_id
+        else:
+            if nargs.export_id is None or nargs.sample_id is None:
+                raise SystemExit(
+                    "provide either --joint-id or both --export-id and "
+                    "--sample-id")
+            asked = joint_identity(nargs.export_id, nargs.sample_id)
+        if not Path(nargs.index).is_file():
+            raise FileNotFoundError(
+                f"distribution index not found: {nargs.index}")
+        ws = DistributionWorkspace.open_readonly(
+            nargs.index,
+            config=WorkspaceConfig(sqlite_cache_kib=nargs.sqlite_cache_kib))
+        try:
+            _print(explain_row(ws, asked,
+                               max_chain_nodes=nargs.max_chain_nodes))
+        finally:
+            ws.conn.close()
+        return 0
+
+    pexpl.set_defaults(func=cmd_training_explain)
     return p
 
 
@@ -206,6 +281,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except DistributionError as exc:
+        _print({"error": exc.reason, "evidence": exc.evidence})
+        return 7
     except TrainingExportError as exc:
         _print({"error": exc.reason, "evidence": exc.evidence})
         return 6
